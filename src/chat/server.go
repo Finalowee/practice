@@ -6,9 +6,7 @@ import (
 	"chat/event"
 	"fmt"
 	"net"
-	"runtime"
 	"strconv"
-	"strings"
 	"time"
 )
 
@@ -21,14 +19,6 @@ type Server struct {
 	listener      net.Listener
 	cliCnt        int
 	cliMaxCnt     int
-}
-
-// 客户端抽象
-type Client struct {
-	addr string
-	name string
-	conn net.Conn
-	s    *Server
 }
 
 // 初始化
@@ -88,8 +78,11 @@ func (s *Server) listen() (err error) {
 }
 
 // 开始处理请求
-func (s *Server) Run(cliCnt int) {
-	s.listen()
+func (s *Server) Run(cliCnt int) (err error) {
+	err = s.listen()
+	if nil != err {
+		return
+	}
 	s.cliMaxCnt = cliCnt
 	for {
 		if s.cliCnt > s.cliMaxCnt {
@@ -108,32 +101,7 @@ func (s *Server) Run(cliCnt int) {
 				s:    s,
 			}
 			cli.online()
-			go HandRequest(&cli)
-		}
-	}
-}
-
-// 处理请求
-func HandRequest(cli *Client) {
-	buf := make([]byte, 2048)
-	defer cli.conn.Close()
-	for {
-		n, err := cli.conn.Read(buf)
-		if nil != err {
-			fmt.Println("请求处理失败:", err)
-			return
-		}
-		received := string(buf[:n])
-		received = strings.Trim(received, "\n")
-		if len(received) == 5 && received[:4] == "EXIT" {
-			cli.s.Broadcast(received)
-			runtime.Goexit()
-			return
-			//fmt.Println("client:", remoteAddr, "offline")
-		} else {
-			//fmt.Println("replay:", replay)
-			msg := fmt.Sprintf("%s say:\n %s", cli.name, string(received))
-			cli.s.Broadcast(msg)
+			go cli.HandRequest()
 		}
 	}
 }
@@ -147,16 +115,4 @@ func (s *Server) Broadcast(msg string) (err error) {
 		}
 	}
 	return
-}
-
-func (c *Client) online() {
-	c.s.cliCnt++
-	c.s.onlineClients[c.addr] = *c
-	event.Trigger(event.ClientOnline, *c)
-}
-
-func (c *Client) offline() {
-	c.s.cliCnt--
-	delete(c.s.onlineClients, c.addr)
-	event.Trigger(event.ClientOffline, *c)
 }
