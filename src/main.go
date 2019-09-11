@@ -1,7 +1,7 @@
 package main
 
 import (
-	"chat"
+	"chat/model"
 	"fmt"
 )
 
@@ -11,8 +11,10 @@ func main() {
 
 	//go day07.NewTCPServer("127.0.0.1:8888")
 	//day07.NewTcpClient("127.0.0.1:8888")
-	server, err := chat.NewServer()
-	fmt.Println(err)
-	server.Run(3)
+	server, err := model.NewServer()
+	if nil != err {
+		fmt.Println(err)
+	}
+	_ = server.Run(3)
 
 }
