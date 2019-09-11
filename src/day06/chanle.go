@@ -9,7 +9,7 @@ import (
 var ch1 chan int
 
 func init() {
-	ch1 = make(chan int, 0)
+	ch1 = make(chan int)
 }
 
 func Producer(i int) {
