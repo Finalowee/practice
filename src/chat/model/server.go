@@ -19,6 +19,7 @@ type Server struct {
 	listener      net.Listener
 	cliCnt        int
 	cliMaxCnt     int
+	chBroadcast   chan Message
 }
 
 // 初始化
@@ -31,7 +32,8 @@ func NewServer() (*Server, error) {
 		ip:            config.ServerIp,
 		port:          config.ServerPort,
 		protocol:      config.ServerProtocol,
-		onlineClients: map[string]Client{},
+		onlineClients: make(map[string]Client),
+		chBroadcast:   make(chan Message),
 	}
 	s.bindListener()
 	return s, nil
@@ -59,53 +61,74 @@ func (s *Server) Run(cliCnt int) (err error) {
 	if nil != err {
 		return
 	}
+	defer func() {
+		err = s.listener.Close()
+	}()
 	s.cliMaxCnt = cliCnt
-	var ch chan string
-	n := 0
+	go s.processMsgBroadcast()
+	s.processRequest() // 阻塞
+	return
+}
+
+func (s *Server) bindListener() {
+	event.Register(event.ClientOnline, s.online)
+	event.Register(event.ClientOnMessage, s.send)
+	//event.Register(event.ClientOffline, s.offline)
+}
+
+func (s *Server) processMsgBroadcast() {
 	for {
-		n++
-		if s.cliCnt > s.cliMaxCnt {
-			time.Sleep(time.Second)
-		} else {
-			conn, err := s.listener.Accept()
-			if nil != err {
-				return err
-			}
-			// 初始化客户端
-			addr := conn.RemoteAddr().String()
-			cli := NewClient(addr, "user_"+strconv.Itoa(n), make(chan string))
-			go cli.handRequest(conn)
+		msg := <-s.chBroadcast
+		fmt.Println(msg)
+		if nil == msg.to {
+			msg.to = s.onlineClients
+		}
+		for _, cli := range msg.to {
+			cli.ch <- msg
 		}
 	}
 }
 
-// 广播
-func (s *Server) Broadcast(msg string) (err error) {
-	for _, cli := range s.onlineClients {
-		err = cli.display(msg)
+func (s *Server) processRequest() {
+	for n := 1; true; n++ {
+		if s.cliCnt > s.cliMaxCnt {
+			time.Sleep(time.Second)
+			continue
+		}
+		conn, err := s.listener.Accept()
+		if nil != err {
+			fmt.Println(err)
+			continue
+		}
+		// 初始化客户端
+		addr := conn.RemoteAddr().String()
+		cli := NewClient(addr, "user_"+strconv.Itoa(n))
+		go cli.handMessage(conn)
 	}
-	return
 }
 
 func (s *Server) online(i interface{}) bool {
 	s.cliCnt++
 	cli := i.(Client)
 	s.onlineClients[cli.addr] = cli
-
-	onlineMsg := fmt.Sprintf("welcome %s", cli.Name)
-	_ = s.Broadcast(onlineMsg)
+	fmt.Printf("user online:\n %+v\n", cli)
+	cli.SendMessage("Hello, everyone!", nil)
 	return true
 }
-func (s *Server) offline(i interface{}) bool {
-	s.cliCnt--
-	cli := i.(Client)
 
-	offlineMsg := fmt.Sprintf("%s offline", cli.Name)
-	_ = cli.s.Broadcast(offlineMsg)
-	delete(s.onlineClients, cli.addr)
+func (s *Server) send(i interface{}) bool {
+	onlineMsg := i.(*Message)
+	//fmt.Println(onlineMsg)
+	s.chBroadcast <- *onlineMsg
 	return true
 }
-func (s *Server) bindListener() {
-	event.Register(event.ClientOnline, s.online)
-	event.Register(event.ClientOffline, s.offline)
-}
+
+//func (s *Server) offline(i interface{}) bool {
+//	s.cliCnt--
+//	cli := i.(Client)
+//
+//	offlineMsg := fmt.Sprintf("%s offline", cli.Name)
+//	_ = cli.s.Broadcast(offlineMsg)
+//	delete(s.onlineClients, cli.addr)
+//	return true
+//}

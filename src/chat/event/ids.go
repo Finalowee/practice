@@ -5,6 +5,7 @@ const (
 	ServerStartListen
 	ServerStartRun
 	ClientOnline
+	ClientOnMessage
 	ClientOffline
 	ServerEnd
 )
